@@ -7,6 +7,8 @@ library(dplyr)
 library(reshape2)
 library(RODBC)
 
+# set this for reproducibility of results
+set.seed(1001)
 
 # Open a connection
 con <- odbcConnect("OSPIR-DEV")
@@ -68,9 +70,8 @@ g <- graph_from_data_frame(d=edges, vertices=nodes, directed=TRUE)
 V(g)$name <- V(g)$InstitutionName
 
 #plot the network
-plot(g)
-
-# total <- merge(data frameA,data frameB,by=c("ID","Country"))
+l <- layout_with_kk(g)
+plot(g, layout=l)
 
 # Make counts
 # Create aggregates
@@ -78,3 +79,9 @@ plot(g)
 # Aspirant Estimation (Reciprocity) -- % Reciprocity in Peer List
 # Weighted Peer Score 1 -- Raw Score * Reciprocal Raw Score
 # Weighted Peer Score 2 -- Raw Score - Segment Mean
+
+# V(g)$color <- "white"
+# V(g)[V(g)$name %in% peers.nd$UNITID2]$color <- "#CCFFFF"
+# V(g)[V(g)$name=="152020"]$color <- "#000099"
+# V(g)[!V(g)$name=="152080"]$name <- ""
+# V(g)[V(g)$name=="152080"]$name <- "Notre Dame"
