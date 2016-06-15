@@ -152,4 +152,6 @@ plot(g2, edge.arrow.size=.2,
 # Weighted Peer Score 1 -- Raw Score * Reciprocal Raw Score
 # Weighted Peer Score 2 -- Raw Score - Segment Mean
 
+peer.score <- data.frame(summarize(group_by(peers, Unitid), count = n()))
+
 
