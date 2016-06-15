@@ -76,6 +76,10 @@ V(g)$name <- V(g)$InstitutionName
 l <- layout_with_kk(g)
 plot(g, layout=l)
 
+cx <- cluster_edge_betweenness(g)
+dendPlot(cx, mode="hclust")
+plot(cx, g)
+
 # Make counts
 # Create aggregates
 # Raw Peer Score = Peer List Counts
