@@ -10,6 +10,9 @@ library(RODBC)
 # set this for reproducibility of results
 set.seed(1001)
 
+# https://www.dropbox.com/s/bvuzpwfqitcucfq/CompGroups.csv?dl=0
+# https://www.dropbox.com/s/7vvws09fkvg8dub/Insts.csv?dl=0
+
 # Open a connection
 con <- odbcConnect("OSPIR-DEV")
 
