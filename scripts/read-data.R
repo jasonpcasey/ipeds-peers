@@ -154,4 +154,3 @@ plot(g2, edge.arrow.size=.2,
 
 peer.score <- data.frame(summarize(group_by(peers, Unitid), count = n()))
 
-
