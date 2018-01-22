@@ -1,0 +1,126 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Setup and Opend Database Connection
+
+```{r}
+rm(list=ls())
+
+# Load needed libraries
+library(tidyverse)
+library(odbc)
+library(igraph)
+
+# set global variables
+odbcString <- "ipeds"
+
+# set this for reproducibility of results
+set.seed(1001)
+
+grabData <- function(dbString, queryString)
+{
+  # Open a connection
+  connection <- dbConnect(odbc::odbc(), dbString)
+  
+  response <- dbSendQuery(connection, queryString)
+  tbl <- dbFetch(response)
+  dbClearResult(response)
+  
+  # disconnect from the database
+  dbDisconnect(connection)
+
+  return(as_tibble(tbl))
+}
+
+```
+
+## Load Institutions Table
+
+```{r}
+qry <- 'SELECT i.UNITID AS Unitid,
+               i.INSTNM AS InstitutionName,
+               i.STABBR AS [State],
+               i.CONTROL AS ControlCode,
+               i.HLOFFER AS HighestLevelOffering
+         FROM  dbo.HD2014 i'
+
+insts <- grabData(odbcString, qry)
+
+rm(qry)
+
+insts
+
+```
+
+## Load Peers Table
+
+```{r}
+qry <- "SELECT c.UNITID AS Unitid, c.CGUNITID AS PeerUnitid FROM dbo.CUSTOMCGIDS2014 c"
+
+peers <- grabData(odbcString, qry)
+
+rm(qry)
+
+peers
+
+```
+
+# What Peers Do We Follow?
+
+```{r}
+unl.peers <- peers %>%
+  filter(Unitid==181464) %>%
+  inner_join(insts, by=c('PeerUnitid' = 'Unitid')) %>%
+  mutate(Unitid = PeerUnitid) %>%
+  select(Unitid, InstitutionName, State)
+
+unl.peers
+
+```
+
+# Institutions That Consider UNL a Peer
+
+```{r}
+watchers <- peers %>%
+  filter(PeerUnitid==181464) %>%
+  group_by(Unitid) %>%
+  summarise(count=n()) %>%
+  ungroup() %>%
+  inner_join(insts) %>%
+  select(Unitid, InstitutionName, State)
+
+watchers
+```
+
+# Mututal Peers
+
+```{r}
+mutual <- watchers %>%
+  intersect(unl.peers)
+
+mutual
+```
+
+# Network
+
+```{r}
+ids <- insts %>%
+  filter(Unitid==181464) %>%
+  select(Unitid) %>%
+  union_all(watchers) %>%
+  union_all(unl.peers) %>%
+  group_by(Unitid) %>%
+  summarise(count=n()) %>%
+  ungroup() %>%
+  select(Unitid) %>%
+  inner_join(peers)
+
+base.insts <- ids %>%
+  inner_join(insts, by)
+
+ids
+
+```
+
