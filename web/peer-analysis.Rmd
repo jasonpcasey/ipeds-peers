@@ -1,0 +1,88 @@
+---
+title: "The Company We Keep"
+author: "Jason P. Casey"
+date: "January 22, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Load needed libraries
+library(tidyverse)
+library(odbc)
+library(igraph)
+
+# set global variables
+odbcString <- "ipeds"
+
+# set this for reproducibility of results
+set.seed(1001)
+
+grabData <- function(dbString, queryString)
+{
+  # Open a connection
+  connection <- dbConnect(odbc::odbc(), dbString)
+  
+  response <- dbSendQuery(connection, queryString)
+  tbl <- dbFetch(response)
+  dbClearResult(response)
+  
+  # disconnect from the database
+  dbDisconnect(connection)
+
+  return(as_tibble(tbl))
+}
+
+qry <- 'SELECT i.UNITID AS Unitid,
+               i.INSTNM AS InstitutionName,
+               i.STABBR AS [State],
+               i.CONTROL AS ControlCode,
+               i.HLOFFER AS HighestLevelOffering
+         FROM  dbo.HD2014 i'
+
+insts <- grabData(odbcString, qry)
+
+qry <- "SELECT c.UNITID AS Unitid, c.CGUNITID AS PeerUnitid FROM dbo.CUSTOMCGIDS2014 c"
+
+peers <- grabData(odbcString, qry)
+
+rm(qry)
+
+```
+
+# What Peers Do We Follow?
+
+```{r}
+unl.peers <- peers %>%
+  filter(Unitid==181464) %>%
+  inner_join(insts, by=c('PeerUnitid' = 'Unitid')) %>%
+  mutate(Unitid = PeerUnitid) %>%
+  select(Unitid, InstitutionName, State)
+
+unl.peers
+
+```
+
+# Institutions That Consider UNL a Peer
+
+```{r}
+watchers <- peers %>%
+  filter(PeerUnitid==181464) %>%
+  group_by(Unitid) %>%
+  summarise(count=n()) %>%
+  ungroup() %>%
+  inner_join(insts) %>%
+  select(Unitid, InstitutionName, State)
+
+watchers
+```
+
+# Mututal Peers
+
+```{r}
+mutual <- watchers %>%
+  intersect(unl.peers)
+
+mutual
+```
