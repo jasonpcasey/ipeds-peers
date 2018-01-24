@@ -9,9 +9,10 @@ output: html_notebook
 rm(list=ls())
 
 # Load needed libraries
-library(tidyverse)
 library(odbc)
 library(igraph)
+library(stringr)
+library(tidyverse)
 
 # set global variables
 odbcString <- "ipeds"
@@ -106,21 +107,66 @@ mutual
 # Network
 
 ```{r}
-ids <- insts %>%
+base.group <- insts %>%
   filter(Unitid==181464) %>%
-  select(Unitid) %>%
-  union_all(watchers) %>%
-  union_all(unl.peers) %>%
-  group_by(Unitid) %>%
-  summarise(count=n()) %>%
-  ungroup() %>%
-  select(Unitid) %>%
+  select(Unitid, InstitutionName, State) %>%
+  union(watchers) %>%
+  union(unl.peers) %>%
+  select(Unitid, InstitutionName, State)
+
+ids <- base.group %>%
+  select(Unitid)
+
+# create odes for the graph.  This is an unduplicated list of things that are related.
+net.nodes <- peers %>%
+  inner_join(ids) %>%
+  inner_join(insts, by=c('PeerUnitid' = 'Unitid')) %>%
+  mutate(Unitid = PeerUnitid) %>%
+  select(Unitid, InstitutionName, State) %>%
+  union(base.group)
+
+# create edges for graph -- this contains the id pairs for each relatiohship.
+net.edges <- ids %>%
   inner_join(peers)
 
-base.insts <- ids %>%
-  inner_join(insts, by)
+# create igraph object from nodes and edges
+g <- graph_from_data_frame(d=net.edges, vertices=net.nodes, directed=TRUE)
 
-ids
+
+l <- layout_with_kk(g)
+# l <- layout_with_fr(g)
+
+# Set edge names to institution names rather than unitid's
+net.nodes <- net.nodes %>%
+  mutate(vgroup = 5,
+         vgroup = ifelse(Unitid %in% watchers$Unitid, 4, vgroup),
+         vgroup = ifelse(Unitid %in% unl.peers$Unitid, 3, vgroup),
+         vgroup = ifelse(Unitid %in% mutual$Unitid, 2, vgroup),
+         vgroup = ifelse(Unitid == 181464, 1, vgroup))
+
+```
+
+
+```{r}
+# display the labels only for desired institutions
+V(g)$label <- net.nodes$InstitutionName
+V(g)$label[!net.nodes$vgroup > 2] <- ''
+
+# set the vertex group to user-defined groups
+V(g)$group <- net.nodes$vgroup
+
+# set edge color based on group
+E(g)$color <- '#e6e6e6'
+E(g)[net.edges$Unitid==181464]$color <- '#cc0000'
+
+#plot the network
+plot(g, edge.arrow.size=.2,
+     vertex.size=5,
+     vertex.label.cex=.5,
+     vertex.color=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6")[V(g)$group],
+     vertex.frame.color=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6")[V(g)$group],
+     layout=l)
+
 
 ```
 
