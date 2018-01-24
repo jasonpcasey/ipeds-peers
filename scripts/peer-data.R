@@ -138,7 +138,7 @@ overlap
 
 library(VennDiagram)
 
-par(family='sans')
+# par(family='sans')
 grid.newpage()
 draw.pairwise.venn(area1=10,
                    area2=25,
