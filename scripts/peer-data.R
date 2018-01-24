@@ -53,7 +53,7 @@ unl.peers <- peers %>%
 
 unl.peers
 
-watchers <- peers %>%
+unl.monitors <- peers %>%
   filter(PeerUnitid==181464) %>%
   group_by(Unitid) %>%
   summarise(count=n()) %>%
@@ -61,9 +61,9 @@ watchers <- peers %>%
   inner_join(insts) %>%
   select(Unitid, InstitutionName, State)
 
-watchers
+unl.monitors
 
-mutual <- watchers %>%
+mutual <- unl.monitors %>%
   intersect(unl.peers)
 
 mutual
@@ -72,7 +72,7 @@ unl <- insts %>%
   filter(Unitid==181464) %>%
   select(Unitid, InstitutionName, State)
 
-base.group <- watchers %>%
+base.group <- unl.monitors %>%
   union(unl.peers) %>%
   union(unl)
 
@@ -85,7 +85,7 @@ net.nodes <- peers %>%
   select(Unitid, InstitutionName, State) %>%
   union(base.group) %>%
   mutate(vgroup = 5,
-         vgroup = ifelse(Unitid %in% watchers$Unitid, 4, vgroup),
+         vgroup = ifelse(Unitid %in% unl.monitors$Unitid, 4, vgroup),
          vgroup = ifelse(Unitid %in% unl.peers$Unitid, 3, vgroup),
          vgroup = ifelse(Unitid %in% mutual$Unitid, 2, vgroup),
          vgroup = ifelse(Unitid == 181464, 1, vgroup))
@@ -116,6 +116,7 @@ E(g)$color <- '#e6e6e6'
 E(g)[net.edges$Unitid==181464]$color <- 'black'
 
 #plot the network
+par(family='sans')
 plot(g, edge.arrow.size=.2,
      vertex.size=5,
      vertex.label.cex=.65,
@@ -130,7 +131,7 @@ legend(x=-1.5, y=-0.9, pch=21,
 overlap <- net.nodes %>%
   filter(vgroup %in% c(2,3,4)) %>%
   mutate(Peer = ifelse(Unitid %in% unl.peers$Unitid, 1, 0),
-         Monitor = ifelse(Unitid %in% watchers$Unitid, 1, 0)) %>%
+         Monitor = ifelse(Unitid %in% unl.monitors$Unitid, 1, 0)) %>%
   group_by(Peer, Monitor) %>%
   summarise(Counts = n())
 
@@ -138,7 +139,6 @@ overlap
 
 library(VennDiagram)
 
-# par(family='sans')
 grid.newpage()
 draw.pairwise.venn(area1=10,
                    area2=25,

@@ -67,7 +67,7 @@ unl.peers
 # Institutions That Consider UNL a Peer
 
 ```{r}
-watchers <- peers %>%
+unl.monitors <- peers %>%
   filter(PeerUnitid==181464) %>%
   group_by(Unitid) %>%
   summarise(count=n()) %>%
@@ -75,13 +75,13 @@ watchers <- peers %>%
   inner_join(insts) %>%
   select(Unitid, InstitutionName, State)
 
-watchers
+unl.monitors
 ```
 
 # Mututal Peers
 
 ```{r}
-mutual <- watchers %>%
+mutual <- unl.monitors %>%
   intersect(unl.peers)
 
 mutual
@@ -91,7 +91,7 @@ mutual
 base.group <- insts %>%
   filter(Unitid==181464) %>%
   select(Unitid, InstitutionName, State) %>%
-  union(watchers) %>%
+  union(unl.monitors) %>%
   union(unl.peers) %>%
   select(Unitid, InstitutionName, State)
 
