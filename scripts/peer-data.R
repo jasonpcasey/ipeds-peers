@@ -95,7 +95,12 @@ net.nodes
 # create edges for graph -- this contains the id pairs for each relatiohship.
 net.edges <- base.group %>%
   select(Unitid) %>%
-  inner_join(peers)
+  inner_join(peers) %>%
+  mutate(type = 'Other',
+         type = ifelse(Unitid %in% unl.monitors$Unitid, 'Monitors', type),
+         type = ifelse(Unitid %in% unl.peers$Unitid, 'Peers', type),
+         type = ifelse(Unitid %in% mutual$Unitid, 'Mutual Peers', type),
+         type = ifelse(Unitid == 181464, 'UNL', type))
 
 net.edges
 
@@ -127,6 +132,20 @@ legend(x=-1.5, y=-0.9, pch=21,
        legend=c('UNL','Mutual Peer','Peer','Monitor','Other'),
        col=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6"),
        pt.bg=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6"))
+
+# net.unl <- g - E(g)[E(g)$type == 'Monitors' | E(g)$type == 'Other']
+# net.unl <- net.unl - V(net.unl)[V(net.unl)$vgroup > 3]
+# 
+# plot(net.unl, edge.arrow.size=.2,
+#      vertex.size=5,
+#      vertex.label.cex=.65,
+#      vertex.color=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6")[V(g)$group],
+#      vertex.frame.color=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6")[V(g)$group],
+#      layout=l)
+# legend(x=-1.5, y=-0.9, pch=21,
+#        legend=c('UNL','Mutual Peer','Peer','Monitor','Other'),
+#        col=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6"),
+#        pt.bg=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6"))
 
 overlap <- net.nodes %>%
   filter(vgroup %in% c(2,3,4)) %>%
