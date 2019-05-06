@@ -34,10 +34,15 @@ qry <- 'SELECT i.UNITID AS Unitid,
                i.INSTNM AS InstitutionName,
                i.STABBR AS [State],
                i.CONTROL AS ControlCode,
-               i.HLOFFER AS HighestLevelOffering
+               i.HLOFFER AS HighestLevelOffering,
+               i.DFRCUSCG AS ListType
          FROM  dbo.HD2014 i'
 
-insts <- grabData(odbcString, qry)
+insts <- grabData(odbcString, qry) %>%
+  mutate(ListType = recode(ListType,
+                           `1`='Custom',
+                           `2`='Generated',
+                           .default = 'Unknown'))
 
 qry <- "SELECT c.UNITID AS Unitid, c.CGUNITID AS PeerUnitid FROM dbo.CUSTOMCGIDS2014 c"
 
@@ -49,7 +54,7 @@ unl.peers <- peers %>%
   filter(Unitid==181464) %>%
   inner_join(insts, by=c('PeerUnitid' = 'Unitid')) %>%
   mutate(Unitid = PeerUnitid) %>%
-  select(Unitid, InstitutionName, State)
+  select(Unitid, InstitutionName, State, ListType)
 
 unl.peers
 
@@ -59,7 +64,7 @@ unl.monitors <- peers %>%
   summarise(count=n()) %>%
   ungroup() %>%
   inner_join(insts) %>%
-  select(Unitid, InstitutionName, State)
+  select(Unitid, InstitutionName, State, ListType)
 
 unl.monitors
 
@@ -70,7 +75,7 @@ mutual
 
 unl <- insts %>%
   filter(Unitid==181464) %>%
-  select(Unitid, InstitutionName, State)
+  select(Unitid, InstitutionName, State, ListType)
 
 base.group <- unl.monitors %>%
   union(unl.peers) %>%
@@ -82,7 +87,7 @@ net.nodes <- peers %>%
   inner_join(base.group[,c('Unitid')]) %>%
   inner_join(insts, by=c('PeerUnitid' = 'Unitid')) %>%
   mutate(Unitid = PeerUnitid) %>%
-  select(Unitid, InstitutionName, State) %>%
+  select(Unitid, InstitutionName, State, ListType) %>%
   union(base.group) %>%
   mutate(vgroup = 5,
          vgroup = ifelse(Unitid %in% unl.monitors$Unitid, 4, vgroup),
