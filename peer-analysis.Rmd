@@ -1,125 +1,123 @@
 ---
-title: "The Company We Keep"
+title: "IPEDS Peer Data Analysis"
+subtitle: "The Company We Keep"
 author: "Jason P. Casey"
-date: "January 22, 2018"
-output: html_document
+output: html_notebook
+date: 2019-05-07
+params:
+  node:
+    label: "Focus Node"
+    value: 181464
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+# knitr options
+knitr::opts_chunk$set(fig.width = 8,
+                      fig.asp = 0.618,
+                      echo = TRUE)
+knitr::knit_engines$set(python = reticulate::eng_python)
 
-# Load needed libraries
+# Additional libraries
 library(odbc)
 library(igraph)
+library(readxl)
 library(tidyverse)
 
-# set global variables
-odbcString <- "ipeds"
+set.seed(1965)
 
-# set this for reproducibility of results
-set.seed(1001)
+```
 
-grabData <- function(dbString, queryString)
-{
-  # Open a connection
-  connection <- dbConnect(odbc::odbc(), dbString)
-  
-  response <- dbSendQuery(connection, queryString)
-  tbl <- dbFetch(response)
-  dbClearResult(response)
-  
-  # disconnect from the database
-  dbDisconnect(connection)
+# Load Data
 
-  return(as_tibble(tbl))
-}
+## Institution File
 
-qry <- 'SELECT i.UNITID AS Unitid,
-               i.INSTNM AS InstitutionName,
-               i.STABBR AS [State],
-               i.CONTROL AS ControlCode,
-               i.HLOFFER AS HighestLevelOffering
-         FROM  dbo.HD2014 i'
+Both institution and peer files originated from https://nces.ed.gov/ipeds.
 
-insts <- grabData(odbcString, qry)
+```{r}
+institutions <- read_excel("data/HD2016.xlsx") %>%
+  rename_all(tolower) %>%
+  select(unitid, institution_name = instnm, state = stabbr, control, list_type = dfrcuscg)
 
-qry <- "SELECT c.UNITID AS Unitid, c.CGUNITID AS PeerUnitid FROM dbo.CUSTOMCGIDS2014 c"
+institutions
+```
 
-peers <- grabData(odbcString, qry)
+## Peer File
 
-rm(qry)
+```{r}
+peers <- read_excel("data/CUSTOMCGIDS2016.xlsx") %>%
+  rename_all(tolower) %>%
+  select(unitid, peer_unitid = cgunitid)
 
+peers
 ```
 
 # What Peers Do We Follow?
 
 ```{r}
-unl.peers <- peers %>%
-  filter(Unitid==181464) %>%
-  inner_join(insts, by=c('PeerUnitid' = 'Unitid')) %>%
-  mutate(Unitid = PeerUnitid) %>%
-  select(Unitid, InstitutionName, State)
+unl_peers <- peers %>%
+  filter(unitid==181464) %>%
+  inner_join(institutions, by=c('peer_unitid' = 'unitid')) %>%
+  mutate(unitid = peer_unitid) %>%
+  select(unitid, institution_name, state)
 
-unl.peers
+unl_peers
 
 ```
 
 # Institutions That Consider UNL a Peer
 
 ```{r}
-unl.monitors <- peers %>%
-  filter(PeerUnitid==181464) %>%
-  group_by(Unitid) %>%
-  summarise(count=n()) %>%
-  ungroup() %>%
-  inner_join(insts) %>%
-  select(Unitid, InstitutionName, State)
+unl_monitors <- peers %>%
+  filter(peer_unitid==181464) %>%
+  count(unitid) %>%
+  inner_join(institutions) %>%
+  select(unitid, institution_name, state)
 
-unl.monitors
+unl_monitors
 ```
 
 # Mututal Peers
 
 ```{r}
-mutual <- unl.monitors %>%
-  intersect(unl.peers)
+mutual <- unl_monitors %>%
+  intersect(unl_peers)
 
 mutual
 ```
 
 ```{r include=FALSE}
-base.group <- insts %>%
-  filter(Unitid==181464) %>%
-  select(Unitid, InstitutionName, State) %>%
-  union(unl.monitors) %>%
-  union(unl.peers) %>%
-  select(Unitid, InstitutionName, State)
+base_group <- institutions %>%
+  filter(unitid==181464) %>%
+  select(unitid, institution_name, state) %>%
+  union(unl_monitors) %>%
+  union(unl_peers) %>%
+  select(unitid, institution_name, state)
 
-ids <- base.group %>%
-  select(Unitid)
+ids <- base_group %>%
+  select(unitid)
 
-net.nodes <- peers %>%
+net_nodes <- peers %>%
   inner_join(ids) %>%
-  inner_join(insts, by=c('PeerUnitid' = 'Unitid')) %>%
-  mutate(Unitid = PeerUnitid) %>%
-  select(Unitid, InstitutionName, State) %>%
-  union(base.group)
+  inner_join(institutions, by=c('peer_unitid' = 'unitid')) %>%
+  mutate(unitid = peer_unitid) %>%
+  select(unitid, institution_name, state) %>%
+  union(base_group)
 
-net.edges <- ids %>%
+net_edges <- ids %>%
   inner_join(peers)
 
 # create edges and nodes for the graph
-edges <- net.edges
-nodes <- net.nodes
+edges <- net_edges
+nodes <- net_nodes
 
 # create igraph object from nodes and edges
 g <- graph_from_data_frame(d=edges, vertices=nodes, directed=TRUE)
 
 # Set edge names to institution names rather than unitid's
-V(g)$label <- V(g)$InstitutionName
+V(g)$label <- V(g)$institution_name
 V(g)$group <- 4
-V(g)[V(g)$name %in% unl.peers$Unitid]$group <- 3
-V(g)[V(g)$name %in% mutual$Unitid]$group <- 2
+V(g)[V(g)$name %in% unl_peers$unitid]$group <- 3
+V(g)[V(g)$name %in% mutual$unitid]$group <- 2
 V(g)[V(g)$name=="181464"]$group <- 1
 
 #plot the network
