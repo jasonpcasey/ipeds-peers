@@ -1,0 +1,152 @@
+---
+title: "IPEDS Peer Data Analysis"
+subtitle: "The Company We Keep"
+author: "Jason P. Casey"
+output: html_notebook
+date: 2019-05-07
+params:
+  node:
+    label: "Focus Node"
+    value: 181464
+---
+
+```{r setup, include=FALSE}
+# knitr options
+knitr::opts_chunk$set(fig.width = 8,
+                      fig.asp = 0.618,
+                      echo = TRUE)
+knitr::knit_engines$set(python = reticulate::eng_python)
+
+# Additional libraries
+library(odbc)
+library(igraph)
+library(tidyverse)
+library(readxl)
+
+set.seed(1965)
+
+
+# set global variables
+odbcString <- "ipeds"
+
+# set this for reproducibility of results
+set.seed(1001)
+
+grabData <- function(dbString, queryString)
+{
+  # Open a connection
+  connection <- dbConnect(odbc::odbc(), dbString)
+  
+  response <- dbSendQuery(connection, queryString)
+  tbl <- dbFetch(response)
+  dbClearResult(response)
+  
+  # disconnect from the database
+  dbDisconnect(connection)
+
+  return(as_tibble(tbl))
+}
+
+qry <- 'SELECT i.UNITID AS Unitid,
+               i.INSTNM AS InstitutionName,
+               i.STABBR AS [State],
+               i.CONTROL AS ControlCode,
+               i.HLOFFER AS HighestLevelOffering
+         FROM  dbo.HD2014 i'
+
+insts <- grabData(odbcString, qry)
+
+qry <- "SELECT c.UNITID AS Unitid, c.CGUNITID AS PeerUnitid FROM dbo.CUSTOMCGIDS2014 c"
+
+peers <- grabData(odbcString, qry)
+
+rm(qry)
+
+```
+
+# What Peers Do We Follow?
+
+```{r}
+unl.peers <- peers %>%
+  filter(Unitid==181464) %>%
+  inner_join(insts, by=c('PeerUnitid' = 'Unitid')) %>%
+  mutate(Unitid = PeerUnitid) %>%
+  select(Unitid, InstitutionName, State)
+
+unl.peers
+
+```
+
+# Institutions That Consider UNL a Peer
+
+```{r}
+unl.monitors <- peers %>%
+  filter(PeerUnitid==181464) %>%
+  group_by(Unitid) %>%
+  summarise(count=n()) %>%
+  ungroup() %>%
+  inner_join(insts) %>%
+  select(Unitid, InstitutionName, State)
+
+unl.monitors
+```
+
+# Mututal Peers
+
+```{r}
+mutual <- unl.monitors %>%
+  intersect(unl.peers)
+
+mutual
+```
+
+```{r include=FALSE}
+base.group <- insts %>%
+  filter(Unitid==181464) %>%
+  select(Unitid, InstitutionName, State) %>%
+  union(unl.monitors) %>%
+  union(unl.peers) %>%
+  select(Unitid, InstitutionName, State)
+
+ids <- base.group %>%
+  select(Unitid)
+
+net.nodes <- peers %>%
+  inner_join(ids) %>%
+  inner_join(insts, by=c('PeerUnitid' = 'Unitid')) %>%
+  mutate(Unitid = PeerUnitid) %>%
+  select(Unitid, InstitutionName, State) %>%
+  union(base.group)
+
+net.edges <- ids %>%
+  inner_join(peers)
+
+# create edges and nodes for the graph
+edges <- net.edges
+nodes <- net.nodes
+
+# create igraph object from nodes and edges
+g <- graph_from_data_frame(d=edges, vertices=nodes, directed=TRUE)
+
+# Set edge names to institution names rather than unitid's
+V(g)$label <- V(g)$InstitutionName
+V(g)$group <- 4
+V(g)[V(g)$name %in% unl.peers$Unitid]$group <- 3
+V(g)[V(g)$name %in% mutual$Unitid]$group <- 2
+V(g)[V(g)$name=="181464"]$group <- 1
+
+#plot the network
+# l <- layout_with_kk(g)
+l <- layout_with_fr(g)
+```
+
+
+```{r pressure, echo=FALSE}
+plot(g, edge.arrow.size=.2,
+     vertex.size=5,
+     vertex.label.cex=.25,
+     vertex.label='',
+     vertex.color=c("#cc0000","#ff6666","#ffcccc","#e6e6e6")[V(g)$group],
+     layout=l)
+
+```
