@@ -2,17 +2,17 @@
 title: "IPEDS Peer Data Analysis"
 subtitle: "The Company We Keep"
 author: "Jason P. Casey"
-output: html_notebook
-date: 2019-05-07
+output: 
+  html_notebook:
+    code_folding: hide
+date: 2019-05-08
 params:
   node:
     label: "Focus Node"
     value: 181464
 ---
 
-# Setup and Opend Database Connection
-
-```{r}
+```{r setup, include = FALSE}
 # knitr options
 knitr::opts_chunk$set(fig.width = 8,
                       fig.asp = 0.618,
@@ -32,17 +32,34 @@ library(networkD3)
 set.seed(1965)
 ```
 
+# Load Data
+
+All data are from public files available from the National Center for Education Statistics, U.S. Department of Education.  These are from the data available in the annual Access Database download (final) for 2016-17.  [](https://nces.ed.gov/ipeds/tablefiles/zipfiles/IPEDS_2016-17_Final.zip).
+
 ## Load Institutions Table
+
+All institutions and peer lists are loaded.  Some institutions did not select a list of peers as part of their Data Feedback Report (DFR) process.  For most of these (those accredited, degree-granting institutions in the "first look" universe), NCES assigned a group based on similarity.
 
 ```{r}
 institutions <- read_excel("data/HD2016.xlsx") %>%
   rename_all(tolower) %>%
-  select(unitid, institution_name = instnm, state = stabbr, control, list_type = dfrcuscg)
+  select(unitid, institution_name = instnm, state = stabbr, control, list_type = dfrcuscg) %>%
+  mutate(control = recode(control,
+                          `1` = "Public",
+                          `2` = "Private Not-for-profit",
+                          `3` = "Private For-profit",
+                          .default = "Other/Unknown"),
+         list_type = recode(list_type,
+                            `1` = "Institution Reported",
+                            `2` = "NCES Assigned",
+                            .default = "Other/Unknown"))
 
 institutions
 ```
 
 ## Load Peers Table
+
+UNL has two main peer groups: its Regent's Peers, which were used for UNL's DFR, and the Big Ten peers.  Two lists were created to ensure that all peers are included in this analysis.
 
 ```{r}
 big_10 <- tribble(
@@ -52,7 +69,6 @@ big_10 <- tribble(
   170976, 
   171100, 
   174066, 
-  181464, 
   186380, 
   204796, 
   214777, 
@@ -70,7 +86,6 @@ regents <- tribble(
   155317, 
   174066, 
   178396, 
-  181464, 
   204796, 
   243780, 
   126614, 
@@ -86,16 +101,60 @@ peers <- read_excel("data/CUSTOMCGIDS2016.xlsx") %>%
   select(unitid, peer_unitid = cgunitid) %>%
   bind_rows(big_10) %>%
   distinct(unitid, peer_unitid)
+```
 
-peers
+# What Peers Do We Follow?
+
+_Peers_ are institutions that UNL monitors for comparison purposes.  This includes the _Regent's_ list and the _Big Ten_ members.  After removing duplicate entries, there are 18 institutions in UNL's peer lists.
+
+```{r}
+unl_peers <- peers %>%
+  filter(unitid==181464) %>%
+  inner_join(institutions, by=c('peer_unitid' = 'unitid')) %>%
+  mutate(unitid = peer_unitid) %>%
+  select(unitid, institution_name, state)
+
+unl_peers %>%
+  filter(unitid != params$node)
+```
+
+# Institutions That Consider UNL a Peer
+
+The _Monitors_ list includes institutions that monitor UNL as a comparison institution.  There are 24 such institutions.
+
+```{r}
+unl_monitors <- peers %>%
+  filter(peer_unitid==181464) %>%
+  group_by(unitid) %>%
+  summarise(count=n()) %>%
+  ungroup() %>%
+  inner_join(institutions) %>%
+  select(unitid, institution_name, state)
+
+unl_monitors %>%
+  filter(unitid != params$node)
+```
+
+# Mututal Peers
+
+_Mutual Peers_ are institutions that compare to UNL and that UNL includes in its comparison lists.  There are five (5) institutions in this category.
+
+```{r}
+mutual <- unl_monitors %>%
+  intersect(unl_peers)
+
+mutual %>%
+  filter(unitid != params$node)
 ```
 
 # Overlap Between Our Peers and Institutions that Moniror UNL
 
+This simple Venn Diagram shows _Peers_ and _Monitors_.  The five institutons that are _Mutual Peers_ are in the overlapping area of the circles. 
+
 ```{r}
 grid.newpage()
-draw.pairwise.venn(area1=19,
-                   area2=25,
+draw.pairwise.venn(area1=18,
+                   area2=24,
                    cross.area=5,
                    fontfamily = 'sans',
                    category=c('Peers', 'Monitors'),
@@ -107,43 +166,9 @@ draw.pairwise.venn(area1=19,
 
 ```
 
-# What Peers Do We Follow?
-
-```{r}
-unl_peers <- peers %>%
-  filter(unitid==181464) %>%
-  inner_join(institutions, by=c('peer_unitid' = 'unitid')) %>%
-  mutate(unitid = peer_unitid) %>%
-  select(unitid, institution_name, state)
-
-unl_peers
-
-```
-
-# Institutions That Consider UNL a Peer
-
-```{r}
-unl_monitors <- peers %>%
-  filter(peer_unitid==181464) %>%
-  group_by(unitid) %>%
-  summarise(count=n()) %>%
-  ungroup() %>%
-  inner_join(institutions) %>%
-  select(unitid, institution_name, state)
-
-unl_monitors
-```
-
-# Mututal Peers
-
-```{r}
-mutual <- unl_monitors %>%
-  intersect(unl_peers)
-
-mutual
-```
-
 # Network
+
+This plot shows UNL's extended network, including _Peers_, _Mutual Peers_, _Monitors_, and other institutions in UNL's _Peers_' peer lists.  Names can be found by hoving the mouse over a given node.
 
 ```{r}
 unl <- institutions %>%
@@ -178,8 +203,6 @@ g <- graph_from_data_frame(d=net_edges, vertices=net_nodes, directed=TRUE)
 
 l <- layout_with_kk(g)
 # l <- layout_with_fr(g)
-
-net_nodes
 ```
 
 
@@ -229,4 +252,3 @@ forceNetwork(Links = peer_net_D3$links,
              opacity = 1.0)
 
 ```
-
