@@ -1,81 +1,102 @@
 ---
-title: "R Notebook"
+title: "IPEDS Peer Data Analysis"
+subtitle: "The Company We Keep"
+author: "Jason P. Casey"
 output: html_notebook
+date: 2019-05-07
+params:
+  node:
+    label: "Focus Node"
+    value: 181464
 ---
 
 # Setup and Opend Database Connection
 
 ```{r}
-rm(list=ls())
+# knitr options
+knitr::opts_chunk$set(fig.width = 8,
+                      fig.asp = 0.618,
+                      echo = TRUE)
+knitr::knit_engines$set(python = reticulate::eng_python)
 
-# Load needed libraries
-library(VennDiagram)
+# Additional libraries
 library(odbc)
 library(igraph)
-library(stringr)
+library(readxl)
+library(reticulate)
 library(tidyverse)
+library(VennDiagram)
+library(htmlwidgets)
+library(networkD3)
 
-# set global variables
-odbcString <- "ipeds"
-
-# set this for reproducibility of results
-set.seed(1001)
-
-grabData <- function(dbString, queryString)
-{
-  # Open a connection
-  connection <- dbConnect(odbc::odbc(), dbString)
-  
-  response <- dbSendQuery(connection, queryString)
-  tbl <- dbFetch(response)
-  dbClearResult(response)
-  
-  # disconnect from the database
-  dbDisconnect(connection)
-
-  return(as_tibble(tbl))
-}
-
+set.seed(1965)
 ```
 
 ## Load Institutions Table
 
 ```{r}
-qry <- 'SELECT i.UNITID AS Unitid,
-               i.INSTNM AS InstitutionName,
-               i.STABBR AS [State],
-               i.CONTROL AS ControlCode,
-               i.HLOFFER AS HighestLevelOffering
-         FROM  dbo.HD2014 i'
+institutions <- read_excel("data/HD2016.xlsx") %>%
+  rename_all(tolower) %>%
+  select(unitid, institution_name = instnm, state = stabbr, control, list_type = dfrcuscg)
 
-insts <- grabData(odbcString, qry)
-
-rm(qry)
-
-insts
-
+institutions
 ```
 
 ## Load Peers Table
 
 ```{r}
-qry <- "SELECT c.UNITID AS Unitid, c.CGUNITID AS PeerUnitid FROM dbo.CUSTOMCGIDS2014 c"
+big_10 <- tribble(
+  ~peer_unitid,
+  153658, 
+  163286, 
+  170976, 
+  171100, 
+  174066, 
+  181464, 
+  186380, 
+  204796, 
+  214777, 
+  240444, 
+  243780, 
+  145637, 
+  151351, 
+  147767
+)
 
-peers <- grabData(odbcString, qry)
+regents <- tribble(
+  ~peer_unitid,
+  153603, 
+  153658, 
+  155317, 
+  174066, 
+  178396, 
+  181464, 
+  204796, 
+  243780, 
+  126614, 
+  126818, 
+  145637
+)
 
-rm(qry)
+big_10 <- big_10 %>%
+  mutate(unitid = as.integer(params$node))
+
+peers <- read_excel("data/CUSTOMCGIDS2016.xlsx") %>%
+  rename_all(tolower) %>%
+  select(unitid, peer_unitid = cgunitid) %>%
+  bind_rows(big_10) %>%
+  distinct(unitid, peer_unitid)
 
 peers
-
 ```
 
 # Overlap Between Our Peers and Institutions that Moniror UNL
 
 ```{r}
 grid.newpage()
-draw.pairwise.venn(area1=10,
+draw.pairwise.venn(area1=19,
                    area2=25,
-                   cross.area=3,
+                   cross.area=5,
                    fontfamily = 'sans',
                    category=c('Peers', 'Monitors'),
                    fill = c("red", "light grey"),
@@ -89,35 +110,35 @@ draw.pairwise.venn(area1=10,
 # What Peers Do We Follow?
 
 ```{r}
-unl.peers <- peers %>%
-  filter(Unitid==181464) %>%
-  inner_join(insts, by=c('PeerUnitid' = 'Unitid')) %>%
-  mutate(Unitid = PeerUnitid) %>%
-  select(Unitid, InstitutionName, State)
+unl_peers <- peers %>%
+  filter(unitid==181464) %>%
+  inner_join(institutions, by=c('peer_unitid' = 'unitid')) %>%
+  mutate(unitid = peer_unitid) %>%
+  select(unitid, institution_name, state)
 
-unl.peers
+unl_peers
 
 ```
 
 # Institutions That Consider UNL a Peer
 
 ```{r}
-unl.monitors <- peers %>%
-  filter(PeerUnitid==181464) %>%
-  group_by(Unitid) %>%
+unl_monitors <- peers %>%
+  filter(peer_unitid==181464) %>%
+  group_by(unitid) %>%
   summarise(count=n()) %>%
   ungroup() %>%
-  inner_join(insts) %>%
-  select(Unitid, InstitutionName, State)
+  inner_join(institutions) %>%
+  select(unitid, institution_name, state)
 
-unl.monitors
+unl_monitors
 ```
 
 # Mututal Peers
 
 ```{r}
-mutual <- unl.monitors %>%
-  intersect(unl.peers)
+mutual <- unl_monitors %>%
+  intersect(unl_peers)
 
 mutual
 ```
@@ -125,68 +146,87 @@ mutual
 # Network
 
 ```{r}
-unl <- insts %>%
-  filter(Unitid==181464) %>%
-  select(Unitid, InstitutionName, State)
+unl <- institutions %>%
+  filter(unitid == params$node) %>%
+  select(unitid, institution_name, state)
 
-base.group <- unl.monitors %>%
-  union(unl.peers) %>%
+base.group <- unl_monitors %>%
+  union(unl_peers) %>%
   union(unl)
 
 # create odes for the graph.  This is an unduplicated list of things that are related.
-net.nodes <- peers %>%
-  inner_join(base.group[,c('Unitid')]) %>%
-  inner_join(insts, by=c('PeerUnitid' = 'Unitid')) %>%
-  mutate(Unitid = PeerUnitid) %>%
-  select(Unitid, InstitutionName, State) %>%
+net_nodes <- peers %>%
+  inner_join(base.group[,c('unitid')]) %>%
+  inner_join(institutions, by=c('peer_unitid' = 'unitid')) %>%
+  mutate(unitid = peer_unitid) %>%
+  select(unitid, institution_name, state) %>%
   union(base.group) %>%
   mutate(vgroup = 5,
-         vgroup = ifelse(Unitid %in% unl.monitors$Unitid, 4, vgroup),
-         vgroup = ifelse(Unitid %in% unl.peers$Unitid, 3, vgroup),
-         vgroup = ifelse(Unitid %in% mutual$Unitid, 2, vgroup),
-         vgroup = ifelse(Unitid == 181464, 1, vgroup))
+         vgroup = ifelse(unitid %in% unl_monitors$unitid, 4, vgroup),
+         vgroup = ifelse(unitid %in% unl_peers$unitid, 3, vgroup),
+         vgroup = ifelse(unitid %in% mutual$unitid, 2, vgroup),
+         vgroup = ifelse(unitid == params$node, 1, vgroup))
 
 # create edges for graph -- this contains the id pairs for each relatiohship.
-net.edges <- base.group %>%
-  select(Unitid) %>%
+net_edges <- base.group %>%
+  select(unitid) %>%
   inner_join(peers)
 
 # create igraph object from nodes and edges
-g <- graph_from_data_frame(d=net.edges, vertices=net.nodes, directed=TRUE)
+g <- graph_from_data_frame(d=net_edges, vertices=net_nodes, directed=TRUE)
 
 
 l <- layout_with_kk(g)
 # l <- layout_with_fr(g)
 
-net.nodes
+net_nodes
 ```
 
 
 ```{r}
 # display the labels only for desired institutions
-V(g)$label <- net.nodes$InstitutionName
-V(g)$label[!net.nodes$vgroup < 4] <- NA
+V(g)$label <- net_nodes$institution_name
+# V(g)$label[!net_nodes$vgroup < 4] <- NA
 
 # set the vertex group to user-defined groups
-V(g)$group <- net.nodes$vgroup
+V(g)$group <- net_nodes$vgroup
 
 # set edge color based on group
 E(g)$color <- '#e6e6e6'
-E(g)[net.edges$Unitid==181464]$color <- 'black'
+E(g)[net_edges$unitid==181464]$color <- 'black'
 
 #plot the network
-par(family='sans')
-plot(g, edge.arrow.size=.2,
-     vertex.size=5,
-     vertex.label.cex=.65,
-     vertex.color=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6")[V(g)$group],
-     vertex.frame.color=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6")[V(g)$group],
-     layout=l)
-legend(x=-1.5, y=-0.9, pch=21,
-       legend=c('UNL','Mutual Peer','Peer','Monitor','Other'),
-       col=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6"),
-       pt.bg=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6"))
+# par(family='sans')
+# plot(g, edge.arrow.size=.2,
+#      vertex.size=5,
+#      vertex.label.cex=.65,
+#      vertex.color=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6")[V(g)$group],
+#      vertex.frame.color=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6")[V(g)$group],
+#      layout=l)
+# legend(x=-1.5, y=-0.9, pch=21,
+#        legend=c('UNL','Mutual Peer','Peer','Monitor','Other'),
+#        col=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6"),
+#        pt.bg=c("#cc0000","#ff6666","#ffcccc","#737373","#e6e6e6"))
 
+peer_net_D3 <- igraph_to_networkD3(g)
+peer_net_D3$nodes$group = as.character(V(g)$group)
+peer_net_D3$nodes$label = V(g)$label
+
+ColourScale <- 'd3.scaleOrdinal()
+            .domain(["1", "2", "3", "4", "5"])
+           .range(["#D00000","#FF6666","#FFCCCC", "#737373", "#A3BACB"]);'
+           
+forceNetwork(Links = peer_net_D3$links,
+             Nodes = peer_net_D3$nodes,
+             Source = 'source',
+             Target = 'target',
+             NodeID = 'label',
+             Group = 'group',
+             linkColour = "#E6E6E6",
+             fontFamily = "sans-serif",
+             fontSize = 14,
+             colourScale = JS(ColourScale),
+             opacity = 1.0)
 
 ```
 

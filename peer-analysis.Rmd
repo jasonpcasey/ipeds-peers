@@ -23,6 +23,9 @@ library(igraph)
 library(readxl)
 library(reticulate)
 library(tidyverse)
+library(plotly)
+library(htmlwidgets)
+library(networkD3)
 
 set.seed(1965)
 
@@ -140,7 +143,12 @@ net_nodes <- peers %>%
   inner_join(institutions, by=c('peer_unitid' = 'unitid')) %>%
   mutate(unitid = peer_unitid) %>%
   select(unitid, institution_name, state) %>%
-  union(base_group)
+  union(base_group) %>%
+  mutate(peer_list = 5,
+         peer_list = ifelse(unitid %in% unl_monitors$unitid, 4, peer_list),
+         peer_list = ifelse(unitid %in% unl_peers$unitid, 3, peer_list),
+         peer_list = ifelse(unitid %in% mutual$unitid, 2, peer_list),
+         peer_list = ifelse(unitid == 181464, 1, peer_list))
 
 net_edges <- ids %>%
   inner_join(peers)
@@ -154,14 +162,11 @@ g <- graph_from_data_frame(d=edges, vertices=nodes, directed=TRUE)
 
 # Set edge names to institution names rather than unitid's
 V(g)$label <- V(g)$institution_name
-V(g)$group <- 4
-V(g)[V(g)$name %in% unl_peers$unitid]$group <- 3
-V(g)[V(g)$name %in% mutual$unitid]$group <- 2
-V(g)[V(g)$name=="181464"]$group <- 1
-
+V(g)$group <- V(g)$peer_list
+V(g)[V(g)$color==c("#cc0000", "#ff6666", "#ffcccc", "#737373", "#e6e6e6")[V(g)$group]]
 #plot the network
-l <- layout_with_kk(g)
-# l <- layout_with_fr(g)
+# l <- layout_with_kk(g)
+l <- layout_with_fr(g)
 ```
 
 
@@ -170,7 +175,134 @@ plot(g, edge.arrow.size=.2,
      vertex.size=5,
      vertex.label.cex=.25,
      vertex.label='',
-     vertex.color=c("#cc0000","#ff6666","#ffcccc","#e6e6e6")[V(g)$group],
+     vertex.color=c("#cc0000", "#ff6666", "#ffcccc", "#737373", "#e6e6e6")[V(g)$group],
      layout=l)
 
 ```
+
+# Plotly Example
+
+```{r}
+vs <- V(g)
+vs$color <- 
+es <- as.data.frame(get.edgelist(g))
+es <- as_tibble(es)
+
+Nv <- length(vs)
+Ne <- length(es[1]$V1)
+
+```
+
+```{r}
+Xn <- l[,1]
+Yn <- l[,2]
+
+network <- plot_ly(x = ~Xn, y = ~Yn,
+                   mode = "markers",
+                   text = vs$label,
+                   color = list("#E6E6E6"),
+                   hoverinfo = "text")
+```
+
+```{r}
+edge_shapes <- list()
+for(i in 1:Ne) {
+  v0 <- es[i,]$V1
+  v1 <- es[i,]$V2
+
+  edge_shape = list(
+    type = "line",
+    line = list(color = "#E6E6E6", width = 0.3),
+    x0 = Xn[v0],
+    y0 = Yn[v0],
+    x1 = Xn[v1],
+    y1 = Yn[v1]
+  )
+
+  edge_shapes[[i]] <- edge_shape
+}
+```
+
+```{r}
+axis <- list(title = "", showgrid = FALSE, showticklabels = FALSE, zeroline = FALSE)
+
+p <- layout(
+  network,
+  title = 'Peer Network',
+  shapes = edge_shapes,
+  xaxis = axis,
+  yaxis = axis
+)
+
+# Create a shareable link to your chart
+# Set up API credentials: https://plot.ly/r/getting-started
+# chart_link = api_create(p, filename="peer-network-r")
+# chart_link
+p
+```
+
+# networkD3 From igraph
+
+```{r}
+peer_net_D3 <- igraph_to_networkD3(g)
+peer_net_D3$nodes$group = as.character(V(g)$group)
+peer_net_D3$nodes$label = V(g)$label
+
+ColourScale <- 'd3.scaleOrdinal()
+            .domain(["1", "2", "3", "4", "5"])
+           .range(["#D00000","#FF6666","#FFCCCC", "#737373", "#A3BACB"]);'
+           
+forceNetwork(Links = peer_net_D3$links,
+             Nodes = peer_net_D3$nodes,
+             Source = 'source',
+             Target = 'target',
+             NodeID = 'label',
+             Group = 'group',
+             linkColour = "#E6E6E6",
+             fontFamily = "sans-serif",
+             fontSize = 14,
+             colourScale = JS(ColourScale),
+             opacity = 1.0)
+```
+
+# networkD3 From Data
+
+```{r}
+# MisNodes
+peer_net_D3$nodes
+```
+
+```{r}
+MisLinks
+```
+
+```{r}
+net_nodes <-
+  net_nodes %>%
+  rename(name = institution_name,
+         group = peer_list) %>%
+  mutate(size = 10) %>%
+  as.data.frame()
+```
+
+```{r}
+net_edges <-
+  net_edges %>%
+  rename(source = unitid, target = peer_unitid) %>%
+  mutate(value = 1) %>%
+  as.data.frame()
+```
+
+```{r}
+forceNetwork(Links = net_edges,
+             Nodes = net_nodes,
+             Source = "source",
+             Target = "target",
+             Value = "value",
+             NodeID = "name",
+             Group = "group",
+             opacity = 1.0)
+```
+
+
+
