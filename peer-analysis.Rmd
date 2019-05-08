@@ -160,8 +160,8 @@ V(g)[V(g)$name %in% mutual$unitid]$group <- 2
 V(g)[V(g)$name=="181464"]$group <- 1
 
 #plot the network
-# l <- layout_with_kk(g)
-l <- layout_with_fr(g)
+l <- layout_with_kk(g)
+# l <- layout_with_fr(g)
 ```
 
 
