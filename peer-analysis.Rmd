@@ -21,6 +21,7 @@ knitr::knit_engines$set(python = reticulate::eng_python)
 library(odbc)
 library(igraph)
 library(readxl)
+library(reticulate)
 library(tidyverse)
 
 set.seed(1965)
@@ -44,9 +45,47 @@ institutions
 ## Peer File
 
 ```{r}
+big_10 <- tribble(
+  ~peer_unitid,
+  153658, 
+  163286, 
+  170976, 
+  171100, 
+  174066, 
+  181464, 
+  186380, 
+  204796, 
+  214777, 
+  240444, 
+  243780, 
+  145637, 
+  151351, 
+  147767
+)
+
+regents <- tribble(
+  ~peer_unitid,
+  153603, 
+  153658, 
+  155317, 
+  174066, 
+  178396, 
+  181464, 
+  204796, 
+  243780, 
+  126614, 
+  126818, 
+  145637
+)
+
+big_10 <- big_10 %>%
+  mutate(unitid = 181464)
+
 peers <- read_excel("data/CUSTOMCGIDS2016.xlsx") %>%
   rename_all(tolower) %>%
-  select(unitid, peer_unitid = cgunitid)
+  select(unitid, peer_unitid = cgunitid) %>%
+  bind_rows(big_10) %>%
+  distinct(unitid, peer_unitid)
 
 peers
 ```
