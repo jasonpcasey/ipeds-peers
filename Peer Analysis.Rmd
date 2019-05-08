@@ -170,7 +170,7 @@ draw.pairwise.venn(area1=18,
 
 This plot shows UNL's extended network, including _Peers_, _Mutual Peers_, _Monitors_, and other institutions in UNL's _Peers_' peer lists.  Names can be found by hoving the mouse over a given node.
 
-```{r}
+```{r results = 'hide'}
 unl <- institutions %>%
   filter(unitid == params$node) %>%
   select(unitid, institution_name, state)
