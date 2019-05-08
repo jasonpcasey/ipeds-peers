@@ -43,6 +43,11 @@ All institutions and peer lists are loaded.  Some institutions did not select a 
 ```{r}
 institutions <- read_excel("data/HD2016.xlsx") %>%
   rename_all(tolower) %>%
+  # filter(iclevel == 1,
+  #        cyactive == 1,
+  #        ugoffer == 1,
+  #        dfrcuscg %in% 1:2
+  #        ) %>%
   select(unitid, institution_name = instnm, state = stabbr, control, list_type = dfrcuscg) %>%
   mutate(control = recode(control,
                           `1` = "Public",
@@ -54,7 +59,8 @@ institutions <- read_excel("data/HD2016.xlsx") %>%
                             `2` = "NCES Assigned",
                             .default = "Other/Unknown"))
 
-institutions
+institutions %>%
+  filter(control %in% c("Public", "Private Not-for-profit"))
 ```
 
 ## Load Peers Table
@@ -175,17 +181,17 @@ unl <- institutions %>%
   filter(unitid == params$node) %>%
   select(unitid, institution_name, state)
 
-base.group <- unl_monitors %>%
+base_group <- unl_monitors %>%
   union(unl_peers) %>%
   union(unl)
 
 # create odes for the graph.  This is an unduplicated list of things that are related.
 net_nodes <- peers %>%
-  inner_join(base.group[,c('unitid')]) %>%
+  inner_join(base_group[,c('unitid')]) %>%
   inner_join(institutions, by=c('peer_unitid' = 'unitid')) %>%
   mutate(unitid = peer_unitid) %>%
   select(unitid, institution_name, state) %>%
-  union(base.group) %>%
+  union(base_group) %>%
   mutate(vgroup = 5,
          vgroup = ifelse(unitid %in% unl_monitors$unitid, 4, vgroup),
          vgroup = ifelse(unitid %in% unl_peers$unitid, 3, vgroup),
@@ -193,7 +199,7 @@ net_nodes <- peers %>%
          vgroup = ifelse(unitid == params$node, 1, vgroup))
 
 # create edges for graph -- this contains the id pairs for each relatiohship.
-net_edges <- base.group %>%
+net_edges <- base_group %>%
   select(unitid) %>%
   inner_join(peers)
 
@@ -252,3 +258,5 @@ forceNetwork(Links = peer_net_D3$links,
              opacity = 1.0)
 
 ```
+
+
