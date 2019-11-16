@@ -41,7 +41,8 @@ All data are from public files available from the National Center for Education 
 All institutions and peer lists are loaded.  Some institutions did not select a list of peers as part of their Data Feedback Report (DFR) process.  For most of these (those accredited, degree-granting institutions in the "first look" universe), NCES assigned a group based on similarity.
 
 ```{r}
-institutions <- read_excel("data/HD2016.xlsx") %>%
+institutions <- 
+  read_excel("data/HD2016.xlsx") %>%
   rename_all(tolower) %>%
   # filter(iclevel == 1,
   #        cyactive == 1,
