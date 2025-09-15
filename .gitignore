@@ -36,3 +36,4 @@ vignettes/*.pdf
 # User added
 *.html
 *.tfl
+.DS_Store
